@@ -1,26 +1,39 @@
+use axum::{
+    http::StatusCode,
+    routing::{get, post},
+    Json, Router,
+};
+use lazy_static::lazy_static;
 use rand::Rng;
+use serde::{Deserialize, Serialize};
 use std::{
     collections::HashMap,
+    net::SocketAddr,
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::{signal, time::sleep};
+use tokio::time::sleep;
 
-#[derive(Clone)]
+#[derive(Clone, Deserialize, Serialize)]
 struct Item {
     name: String,
-    qty: u128,
+    qty: usize,
 }
 
 #[derive(Clone)]
 struct Inventory {
     items: HashMap<String, Item>,
-    held: HashMap<u8, Vec<Item>>,
+    held: HashMap<usize, Vec<Item>>,
 }
 
-#[derive(Clone)]
+#[derive(Clone, Serialize)]
 struct Order {
-    id: u8,
+    id: usize,
+    items: Vec<Item>,
+}
+
+#[derive(Clone, Deserialize)]
+struct CreateOrder {
     items: Vec<Item>,
 }
 
@@ -34,7 +47,7 @@ impl Inventory {
                         item.qty -= order_item.qty;
                     } else {
                         println!(
-                            "| Order id{} over requested\n -{} has qty of {} but order is requesting qty of {}",
+                            "| Order #{} over requested\n -{} has qty of {} but order is requesting qty of {}",
                             order.id, item.name, item.qty, order_item.qty
                         );
                         return false;
@@ -51,7 +64,7 @@ impl Inventory {
         true
     }
 
-    fn undo_hold(&mut self, order_id: &u8) {
+    fn undo_hold(&mut self, order_id: &usize) {
         for held_item in self.held.get(order_id).unwrap() {
             match self.items.get_mut(&held_item.name) {
                 Some(item) => item.qty += held_item.qty,
@@ -62,7 +75,7 @@ impl Inventory {
         }
     }
 
-    fn release_order(&mut self, order_id: &u8) {
+    fn release_order(&mut self, order_id: &usize) {
         self.held.remove(order_id);
     }
 
@@ -75,9 +88,8 @@ impl Inventory {
     }
 }
 
-#[tokio::main]
-async fn main() {
-    let store_inventory: Inventory = Inventory {
+lazy_static! {
+    static ref WORKING_INVENTORY: Arc<Mutex<Inventory>> = Arc::new(Mutex::new(Inventory {
         held: HashMap::from([]),
         items: HashMap::from([
             (
@@ -95,78 +107,57 @@ async fn main() {
                 },
             ),
         ]),
-    };
-
-    let orders: Vec<Order> = vec![
-        Order {
-            id: 1,
-            items: vec![
-                Item {
-                    name: "item1".to_string(),
-                    qty: 3,
-                },
-                Item {
-                    name: "item2".to_string(),
-                    qty: 2,
-                },
-            ],
-        },
-        Order {
-            id: 2,
-            items: vec![
-                Item {
-                    name: "item1".to_string(),
-                    qty: 1,
-                },
-                Item {
-                    name: "item2".to_string(),
-                    qty: 2,
-                },
-            ],
-        },
-        Order {
-            id: 3,
-            items: vec![Item {
-                name: "item1".to_string(),
-                qty: 1,
-            }],
-        },
-    ];
-
-    store_inventory.log_inventory();
-
-    let working_inventory = Arc::new(Mutex::new(store_inventory));
-
-    for order in orders {
-        proces_order(working_inventory.clone(), order).await;
-    }
-
-    match signal::ctrl_c().await {
-        Ok(()) => {}
-        Err(err) => {
-            eprintln!("Unable to listen for shutdown signal: {}", err);
-        }
-    }
+    }));
 }
 
-async fn proces_order(inventory: Arc<Mutex<Inventory>>, order: Order) {
-    println!("processing order #{}", order.id);
+#[tokio::main]
+async fn main() {
+    let app = Router::new()
+        .route("/", get(hello_world))
+        .route("/process_order", post(process_order));
+    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    axum::Server::bind(&addr)
+        .serve(app.into_make_service())
+        .await
+        .unwrap();
+}
+
+async fn hello_world() -> &'static str {
+    "hello"
+}
+
+async fn process_order(Json(order): Json<CreateOrder>) -> (StatusCode, Json<Order>) {
+    let order_id: usize = rand::thread_rng().gen_range(1..10000);
+    println!("processing order #{}", order_id);
+
+    let new_order = Order {
+        id: order_id,
+        items: order.items,
+    };
+
     tokio::spawn(async move {
-        if inventory.lock().unwrap().hold_items(&order) {
-            if collect_payment(&order).await {
-                inventory.lock().unwrap().release_order(&order.id);
-                println!("Sucessfully collected payment for order #{}", order.id);
-                inventory.lock().unwrap().log_inventory();
+        if WORKING_INVENTORY.lock().unwrap().hold_items(&new_order) {
+            if collect_payment(order_id).await {
+                WORKING_INVENTORY.lock().unwrap().release_order(&order_id);
+                println!("Sucessfully collected payment for order #{}", order_id);
+                WORKING_INVENTORY.lock().unwrap().log_inventory();
             } else {
-                inventory.lock().unwrap().undo_hold(&order.id);
-                println!("Error while collecting payment for order #{}", order.id);
+                WORKING_INVENTORY.lock().unwrap().undo_hold(&order_id);
+                println!("Error while collecting payment for order #{}", order_id);
             }
         }
     });
+
+    let new_order = Order {
+        id: order_id,
+        items: vec![],
+    };
+
+    (StatusCode::OK, Json(new_order))
 }
 
-async fn collect_payment(order: &Order) -> bool {
-    println!("Collecting payment for order {}", order.id);
+async fn collect_payment(order_id: usize) -> bool {
+    println!("Collecting payment for order {}", order_id);
     let sleep_time = Duration::from_secs(rand::thread_rng().gen_range(1..=3));
     sleep(sleep_time).await;
     let payment_status = rand::thread_rng().gen_bool(0.7);
