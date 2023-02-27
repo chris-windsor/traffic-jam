@@ -1,5 +1,9 @@
 use rand::Rng;
-use std::{collections::HashMap, sync::Arc, time::Duration};
+use std::{
+    collections::HashMap,
+    sync::{Arc, Mutex},
+    time::Duration,
+};
 use tokio::{signal, time::sleep};
 
 #[derive(Clone)]
@@ -73,7 +77,7 @@ impl Inventory {
 
 #[tokio::main]
 async fn main() {
-    let mut store_inventory: Inventory = Inventory {
+    let store_inventory: Inventory = Inventory {
         held: HashMap::from([]),
         items: HashMap::from([
             (
@@ -131,9 +135,10 @@ async fn main() {
 
     store_inventory.log_inventory();
 
+    let working_inventory = Arc::new(Mutex::new(store_inventory));
+
     for order in orders {
-        proces_order(&mut store_inventory, order).await;
-        store_inventory.log_inventory();
+        proces_order(working_inventory.clone(), order).await;
     }
 
     match signal::ctrl_c().await {
@@ -144,17 +149,20 @@ async fn main() {
     }
 }
 
-async fn proces_order(inventory: &mut Inventory, order: Order) {
+async fn proces_order(inventory: Arc<Mutex<Inventory>>, order: Order) {
     println!("processing order #{}", order.id);
-    if inventory.hold_items(&order) {
-        if collect_payment(&order).await {
-            inventory.release_order(&order.id);
-            println!("Sucessfully collected payment for order #{}", order.id);
-        } else {
-            inventory.undo_hold(&order.id);
-            println!("Error while collecting payment for order #{}", order.id);
+    tokio::spawn(async move {
+        if inventory.lock().unwrap().hold_items(&order) {
+            if collect_payment(&order).await {
+                inventory.lock().unwrap().release_order(&order.id);
+                println!("Sucessfully collected payment for order #{}", order.id);
+                inventory.lock().unwrap().log_inventory();
+            } else {
+                inventory.lock().unwrap().undo_hold(&order.id);
+                println!("Error while collecting payment for order #{}", order.id);
+            }
         }
-    }
+    });
 }
 
 async fn collect_payment(order: &Order) -> bool {
