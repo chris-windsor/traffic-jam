@@ -1,5 +1,5 @@
 use rand::Rng;
-use std::{collections::HashMap, time::Duration};
+use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::{signal, time::sleep};
 
 #[derive(Clone)]
@@ -47,7 +47,7 @@ impl Inventory {
         true
     }
 
-    fn ret_items(&mut self, order_id: &u8) {
+    fn undo_hold(&mut self, order_id: &u8) {
         for held_item in self.held.get(order_id).unwrap() {
             match self.items.get_mut(&held_item.name) {
                 Some(item) => item.qty += held_item.qty,
@@ -56,6 +56,10 @@ impl Inventory {
                 }
             }
         }
+    }
+
+    fn release_order(&mut self, order_id: &u8) {
+        self.held.remove(order_id);
     }
 
     fn log_inventory(&self) {
@@ -144,9 +148,10 @@ async fn proces_order(inventory: &mut Inventory, order: Order) {
     println!("processing order #{}", order.id);
     if inventory.hold_items(&order) {
         if collect_payment(&order).await {
+            inventory.release_order(&order.id);
             println!("Sucessfully collected payment for order #{}", order.id);
         } else {
-            inventory.ret_items(&order.id);
+            inventory.undo_hold(&order.id);
             println!("Error while collecting payment for order #{}", order.id);
         }
     }
@@ -157,9 +162,5 @@ async fn collect_payment(order: &Order) -> bool {
     let sleep_time = Duration::from_secs(rand::thread_rng().gen_range(1..=3));
     sleep(sleep_time).await;
     let payment_status = rand::thread_rng().gen_bool(0.7);
-    println!(
-        "Payment status for order {} is: {}",
-        order.id, payment_status
-    );
     payment_status
 }
