@@ -1,4 +1,5 @@
 use axum::{
+    extract::Path,
     http::StatusCode,
     routing::{get, post},
     Json, Router,
@@ -113,7 +114,7 @@ lazy_static! {
 #[tokio::main]
 async fn main() {
     let app = Router::new()
-        .route("/", get(hello_world))
+        .route("/product/:id", get(product_data))
         .route("/process_order", post(process_order));
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     axum::Server::bind(&addr)
@@ -122,8 +123,11 @@ async fn main() {
         .unwrap();
 }
 
-async fn hello_world() -> &'static str {
-    "hello"
+async fn product_data(Path(id): Path<String>) -> (StatusCode, Json<Option<Item>>) {
+    match WORKING_INVENTORY.lock().unwrap().items.get(&id) {
+        Some(item) => (StatusCode::OK, Json(Some(item.to_owned()))),
+        None => (StatusCode::BAD_REQUEST, Json(None)),
+    }
 }
 
 async fn process_order(Json(order): Json<CreateOrder>) -> (StatusCode, Json<Order>) {
