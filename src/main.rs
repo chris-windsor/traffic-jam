@@ -38,6 +38,18 @@ struct CreateOrder {
     items: Vec<Item>,
 }
 
+#[derive(Serialize)]
+struct RequestError {
+    message: String,
+    detail: String,
+}
+
+#[derive(Serialize)]
+struct DetailedResponse<T> {
+    data: Option<T>,
+    error: Option<RequestError>,
+}
+
 impl Inventory {
     fn hold_items(&mut self, order: &Order) -> bool {
         let mut clone_inventory = self.items.clone();
@@ -123,10 +135,26 @@ async fn main() {
         .unwrap();
 }
 
-async fn product_data(Path(id): Path<String>) -> (StatusCode, Json<Option<Item>>) {
+async fn product_data(Path(id): Path<String>) -> (StatusCode, Json<DetailedResponse<Item>>) {
     match WORKING_INVENTORY.lock().unwrap().items.get(&id) {
-        Some(item) => (StatusCode::OK, Json(Some(item.to_owned()))),
-        None => (StatusCode::BAD_REQUEST, Json(None)),
+        Some(item) => (
+            StatusCode::OK,
+            Json(DetailedResponse {
+                data: Some(item.to_owned()),
+                error: None,
+            }),
+        ),
+        None => (
+            StatusCode::BAD_REQUEST,
+            Json(DetailedResponse {
+                data: None,
+                error: Some(RequestError {
+                    message: "Malformed Item Request".to_string(),
+                    detail: format!("Item with id {} does not exist within the inventory", id)
+                        .to_string(),
+                }),
+            }),
+        ),
     }
 }
 
