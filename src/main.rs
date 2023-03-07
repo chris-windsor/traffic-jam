@@ -1,9 +1,12 @@
 use self::models::*;
 use crate::inventory::*;
 use axum::{
-    extract::Path,
+    extract::{
+        ws::{Message, WebSocket},
+        Path, State, WebSocketUpgrade,
+    },
     http::StatusCode,
-    response::{sse::Event, Html, Sse},
+    response::{sse::Event, Html, IntoResponse, Sse},
     routing::{get, post},
     Json, Router,
 };
@@ -19,7 +22,7 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::time::sleep;
+use tokio::{sync::broadcast, time::sleep};
 use traffic_jam::*;
 
 mod inventory;
@@ -43,6 +46,11 @@ struct DetailedResponse<T> {
     error: Option<RequestError>,
 }
 
+#[derive(Clone)]
+struct AppState {
+    tx: broadcast::Sender<String>,
+}
+
 lazy_static! {
     static ref HOLDING_INVENTORY: Arc<Mutex<LockedInventory>> =
         Arc::new(Mutex::new(LockedInventory {
@@ -54,11 +62,16 @@ lazy_static! {
 
 #[tokio::main]
 async fn main() {
+    let (tx, _) = broadcast::channel::<String>(100);
+    let app_state = AppState { tx: tx.clone() };
+
     let app = Router::new()
         .route("/product/:product_id", get(product_data))
         .route("/process_order", post(process_order))
         .route("/dashboard", get(dashboard))
-        .route("/event_stream", get(sse_handler));
+        .route("/event_stream", get(sse_handler))
+        .route("/event_socket", get(ws_handler))
+        .with_state(app_state.clone());
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
@@ -105,10 +118,16 @@ async fn product_data(
 }
 
 async fn process_order(
+    State(state): State<AppState>,
     Json(order): Json<CreateOrder>,
 ) -> (StatusCode, Json<DetailedResponse<Order>>) {
     let order_id: usize = rand::thread_rng().gen_range(1..10000);
-    println!("processing order #{}", order_id);
+    let processing_msg = format!("Processing order {}", order_id).to_string();
+    let _ = state.tx.send(processing_msg.to_owned());
+    UDPATE_QUEUE
+        .lock()
+        .unwrap()
+        .push_back(processing_msg.to_owned());
 
     let new_order: Order = Order {
         id: order_id,
@@ -117,13 +136,14 @@ async fn process_order(
 
     let process_handle = tokio::spawn(async move {
         if HOLDING_INVENTORY.lock().unwrap().hold_items(&new_order) {
-            if collect_payment(order_id).await {
+            if collect_payment().await {
                 HOLDING_INVENTORY.lock().unwrap().release_order(&order_id);
-                println!("Sucessfully collected payment for order #{}", order_id);
+                let completion_msg = format!("Completed order {}", order_id).to_string();
+                let _ = state.tx.send(completion_msg.to_owned());
                 UDPATE_QUEUE
                     .lock()
                     .unwrap()
-                    .push_back(format!("Completed order {}", order_id).to_string());
+                    .push_back(completion_msg.to_owned());
                 return (
                     StatusCode::OK,
                     Json(DetailedResponse {
@@ -133,7 +153,12 @@ async fn process_order(
                 );
             } else {
                 HOLDING_INVENTORY.lock().unwrap().undo_hold(&order_id);
-                println!("Error while collecting payment for order #{}", order_id);
+                let failure_msg = format!("Error while collecting payment for order #{}", order_id);
+                let _ = state.tx.send(failure_msg.to_owned());
+                UDPATE_QUEUE
+                    .lock()
+                    .unwrap()
+                    .push_back(failure_msg.to_owned());
                 return (
                     StatusCode::OK,
                     Json(DetailedResponse {
@@ -162,8 +187,7 @@ async fn process_order(
     process_handle.await.unwrap()
 }
 
-async fn collect_payment(order_id: usize) -> bool {
-    println!("Collecting payment for order {}", order_id);
+async fn collect_payment() -> bool {
     let sleep_time = Duration::from_secs(rand::thread_rng().gen_range(1..=3));
     sleep(sleep_time).await;
     let payment_status = rand::thread_rng().gen_bool(0.7);
@@ -190,4 +214,18 @@ async fn sse_handler() -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     };
 
     Sse::new(stream)
+}
+
+async fn ws_handler(ws: WebSocketUpgrade, State(state): State<AppState>) -> impl IntoResponse {
+    ws.on_upgrade(|ws| async { ws_loop(state, ws).await })
+}
+
+async fn ws_loop(app_state: AppState, mut ws: WebSocket) {
+    let mut rx = app_state.tx.subscribe();
+
+    while let Ok(msg) = rx.recv().await {
+        ws.send(Message::Text(Json(&msg).to_string()))
+            .await
+            .unwrap();
+    }
 }

@@ -8,21 +8,31 @@
 
 <body>
     <script>
-        const evtSource = new EventSource("http://localhost:3000/event_stream");
+        // const evtSource = new EventSource("http://localhost:3000/event_stream");
 
-        evtSource.onmessage = function (e) {
+        // evtSource.onmessage = function (e) {
+        //     console.log(e.data);
+        //     console.count('completedOrders')
+        // }
+
+        // evtSource.onerror = (err) => {
+        //     console.error("EventSource failed: ", err);
+        // };
+
+        const ws = new WebSocket("ws://localhost:3000/event_socket");
+
+        ws.onmessage = function (e) {
             console.log(e.data);
-            console.count('completedOrders')
         }
 
-        evtSource.onerror = (err) => {
-            console.error("EventSource failed: ", err);
-        };
+        ws.onerror = (err) => {
+            console.error("Websocket failed: ", err);
+        }
 
         window.addEventListener("beforeunload", () => {
             evtSource.close();
+            ws.close();
         });
-
     </script>
 </body>
 
