@@ -1,4 +1,5 @@
 use self::models::*;
+use crate::inventory::*;
 use axum::{
     extract::Path,
     http::StatusCode,
@@ -10,7 +11,7 @@ use diesel::prelude::*;
 use futures::Stream;
 use lazy_static::lazy_static;
 use rand::Rng;
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use std::{
     collections::{HashMap, VecDeque},
     convert::Infallible,
@@ -21,33 +22,13 @@ use std::{
 use tokio::time::sleep;
 use traffic_jam::*;
 
-#[derive(Clone, Deserialize, Serialize)]
-struct Item {
-    id: i32,
-    qty: i32,
-}
+mod inventory;
 
 #[derive(Serialize)]
 struct ResultProduct {
     id: i32,
     title: String,
     stock: i32,
-}
-
-#[derive(Clone)]
-struct LockedInventory {
-    items: HashMap<usize, Vec<Item>>,
-}
-
-#[derive(Clone, Serialize)]
-struct Order {
-    id: usize,
-    items: Vec<Item>,
-}
-
-#[derive(Clone, Deserialize)]
-struct CreateOrder {
-    items: Vec<Item>,
 }
 
 #[derive(Serialize)]
@@ -60,67 +41,6 @@ struct RequestError {
 struct DetailedResponse<T> {
     data: Option<T>,
     error: Option<RequestError>,
-}
-
-impl LockedInventory {
-    fn hold_items(&mut self, order: &Order) -> bool {
-        use self::schema::products::dsl::*;
-
-        let conn = &mut establish_connection();
-
-        for order_item in &order.items {
-            let result_product: Option<Product> =
-                products.find(order_item.id).first(conn).optional().unwrap();
-            match result_product {
-                Some(item) => {
-                    if item.stock >= order_item.qty {
-                        diesel::update(products.find(order_item.id))
-                            .set(stock.eq(stock - order_item.qty))
-                            .get_result::<Product>(conn)
-                            .expect("Unable to take inventory");
-                    } else {
-                        println!(
-                            "| Order #{} over requested\n -{} has qty of {} but order is requesting qty of {}",
-                            order.id, item.title, item.stock, order_item.qty
-                        );
-                        return false;
-                    }
-                }
-                None => {
-                    panic!("Could not find item with id {}", order_item.id);
-                }
-            }
-        }
-
-        self.items.insert(order.id, order.items.clone());
-        true
-    }
-
-    fn undo_hold(&mut self, order_id: &usize) {
-        use self::schema::products::dsl::*;
-
-        let conn = &mut establish_connection();
-
-        for held_item in self.items.get(order_id).unwrap() {
-            let result_product: Option<Product> =
-                products.find(held_item.id).first(conn).optional().unwrap();
-            match result_product {
-                Some(_) => {
-                    diesel::update(products.find(held_item.id))
-                        .set(stock.eq(stock + held_item.qty))
-                        .get_result::<Product>(conn)
-                        .expect("Unable to return inventory");
-                }
-                None => {
-                    panic!("Could not find item with id {}", held_item.id);
-                }
-            }
-        }
-    }
-
-    fn release_order(&mut self, order_id: &usize) {
-        self.items.remove(order_id);
-    }
 }
 
 lazy_static! {
