@@ -1,4 +1,5 @@
 use self::models::*;
+use crate::POOL;
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -19,7 +20,7 @@ impl LockedInventory {
     pub fn hold_items(&mut self, order: &Order) -> bool {
         use self::schema::products::dsl::*;
 
-        let conn = &mut establish_connection();
+        let conn = &mut POOL.get().unwrap();
 
         for order_item in &order.items {
             let result_product: Option<Product> =
@@ -52,7 +53,7 @@ impl LockedInventory {
     pub fn undo_hold(&mut self, order_id: &usize) {
         use self::schema::products::dsl::*;
 
-        let conn = &mut establish_connection();
+        let conn = &mut POOL.get().unwrap();
 
         for held_item in self.items.get(order_id).unwrap() {
             let result_product: Option<Product> =

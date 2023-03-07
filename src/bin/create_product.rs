@@ -2,7 +2,8 @@ use std::io::stdin;
 use traffic_jam::*;
 
 fn main() {
-    let conn = &mut establish_connection();
+    let pool = create_pool();
+    let conn = &mut pool.get().unwrap();
 
     let mut title = String::new();
     let mut stock = String::new();

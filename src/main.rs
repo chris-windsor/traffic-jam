@@ -10,7 +10,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use diesel::prelude::*;
+use diesel::{
+    prelude::*,
+    r2d2::{ConnectionManager, Pool},
+};
 use futures::Stream;
 use lazy_static::lazy_static;
 use rand::Rng;
@@ -22,7 +25,10 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::{sync::broadcast, time::sleep};
+use tokio::{
+    sync::broadcast::{self, Sender},
+    time::sleep,
+};
 use traffic_jam::*;
 
 mod inventory;
@@ -48,10 +54,13 @@ struct DetailedResponse<T> {
 
 #[derive(Clone)]
 struct AppState {
-    tx: broadcast::Sender<String>,
+    tx: Sender<String>,
 }
 
+type PgPool = Pool<ConnectionManager<PgConnection>>;
+
 lazy_static! {
+    pub static ref POOL: PgPool = create_pool();
     static ref HOLDING_INVENTORY: Arc<Mutex<LockedInventory>> =
         Arc::new(Mutex::new(LockedInventory {
             items: HashMap::from([])
@@ -84,7 +93,8 @@ async fn product_data(
 ) -> (StatusCode, Json<DetailedResponse<ResultProduct>>) {
     use self::schema::products::dsl::*;
 
-    let conn = &mut establish_connection();
+    let conn = &mut POOL.get().unwrap();
+
     let filter_id: i32 = product_id.parse().unwrap_or(0);
     let result_product: Option<Product> = products.find(filter_id).first(conn).optional().unwrap();
 
