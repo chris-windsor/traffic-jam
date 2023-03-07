@@ -2,15 +2,18 @@ use self::models::*;
 use axum::{
     extract::Path,
     http::StatusCode,
+    response::{sse::Event, Html, Sse},
     routing::{get, post},
     Json, Router,
 };
 use diesel::prelude::*;
+use futures::Stream;
 use lazy_static::lazy_static;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
 use std::{
-    collections::HashMap,
+    collections::{HashMap, VecDeque},
+    convert::Infallible,
     net::SocketAddr,
     sync::{Arc, Mutex},
     time::Duration,
@@ -125,13 +128,17 @@ lazy_static! {
         Arc::new(Mutex::new(LockedInventory {
             items: HashMap::from([])
         }));
+    static ref UDPATE_QUEUE: Arc<Mutex<VecDeque<String>>> =
+        Arc::new(Mutex::new(VecDeque::from([])));
 }
 
 #[tokio::main]
 async fn main() {
     let app = Router::new()
         .route("/product/:product_id", get(product_data))
-        .route("/process_order", post(process_order));
+        .route("/process_order", post(process_order))
+        .route("/dashboard", get(dashboard))
+        .route("/event_stream", get(sse_handler));
     let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
@@ -193,6 +200,10 @@ async fn process_order(
             if collect_payment(order_id).await {
                 HOLDING_INVENTORY.lock().unwrap().release_order(&order_id);
                 println!("Sucessfully collected payment for order #{}", order_id);
+                UDPATE_QUEUE
+                    .lock()
+                    .unwrap()
+                    .push_back(format!("Completed order {}", order_id).to_string());
                 return (
                     StatusCode::OK,
                     Json(DetailedResponse {
@@ -237,4 +248,26 @@ async fn collect_payment(order_id: usize) -> bool {
     sleep(sleep_time).await;
     let payment_status = rand::thread_rng().gen_bool(0.7);
     payment_status
+}
+
+async fn dashboard() -> Html<&'static str> {
+    Html(std::include_str!("../dashboard.html"))
+}
+
+async fn sse_handler() -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
+    let stream = async_stream::stream! {
+        let mut interval = tokio::time::interval(Duration::from_millis(100));
+        loop {
+            interval.tick().await;
+            let latest_update = UDPATE_QUEUE.lock().unwrap().pop_front();
+            match latest_update {
+                Some(data) => {
+                    yield Ok(Event::default().data(data));
+                },
+                None => {}
+            }
+        }
+    };
+
+    Sse::new(stream)
 }
