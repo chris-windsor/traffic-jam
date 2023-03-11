@@ -1,3 +1,4 @@
+pub mod authorize_net;
 pub mod models;
 pub mod schema;
 
