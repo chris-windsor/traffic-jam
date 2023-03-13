@@ -1,58 +1,64 @@
-use std::env;
-
 use dotenvy::dotenv;
 use rand::Rng;
 use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
+use std::env;
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ChargeCreditCardRequest {
-    createTransactionRequest: CreateTransactionRequest,
+    create_transaction_request: CreateTransactionRequest,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CreateTransactionRequest {
-    merchantAuthentication: MerchantAuthentication,
-    refId: String,
-    transactionRequest: TransactionRequest,
+    merchant_authentication: MerchantAuthentication,
+    ref_id: String,
+    transaction_request: TransactionRequest,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct MerchantAuthentication {
     name: String,
-    transactionKey: String,
+    transaction_key: String,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct TransactionRequest {
-    transactionType: String,
+    transaction_type: String,
     amount: String,
     payment: Payment,
-    lineItems: Vec<()>,
+    line_items: Vec<()>,
     tax: Fee,
     duty: Fee,
     shipping: Fee,
-    poNumber: String,
+    po_number: String,
     customer: Customer,
-    billTo: Address,
-    shipTo: Address,
-    customerIP: String,
-    transactionSettings: TransactionSettings,
-    userFields: UserFields,
-    processingOptions: ProcessingOptions,
-    subsequentAuthInformation: SubsequentAuthInformation,
-    authorizationIndicatorType: AuthorizationIndicatorType,
+    bill_to: Address,
+    ship_to: Address,
+    #[serde(rename(serialize = "customerIP"))]
+    customer_ip: String,
+    transaction_settings: TransactionSettings,
+    user_fields: UserFields,
+    processing_options: ProcessingOptions,
+    subsequent_auth_information: SubsequentAuthInformation,
+    authorization_indicator_type: AuthorizationIndicatorType,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct AuthorizationIndicatorType {
-    authorizationIndicator: String,
+    authorization_indicator: String,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Address {
-    firstName: String,
-    lastName: String,
+    first_name: String,
+    last_name: String,
     company: String,
     address: String,
     city: String,
@@ -62,11 +68,13 @@ struct Address {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Customer {
     id: String,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Fee {
     amount: String,
     name: String,
@@ -74,60 +82,70 @@ struct Fee {
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct LineItems {
-    lineItem: LineItem,
+    line_item: LineItem,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct LineItem {
-    itemId: String,
+    item_id: String,
     name: String,
     description: String,
     quantity: String,
-    unitPrice: String,
+    unit_price: String,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct Payment {
-    creditCard: CreditCard,
+    credit_card: CreditCard,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct CreditCard {
-    cardNumber: String,
-    expirationDate: String,
-    cardCode: String,
+    card_number: String,
+    expiration_date: String,
+    card_code: String,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct ProcessingOptions {
-    isSubsequentAuth: String,
+    is_subsequent_auth: String,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct SubsequentAuthInformation {
-    originalNetworkTransId: String,
-    originalAuthAmount: String,
+    original_network_trans_id: String,
+    original_auth_amount: String,
     reason: String,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct TransactionSettings {
     setting: TransactionSetting,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct TransactionSetting {
-    settingName: String,
-    settingValue: String,
+    setting_name: String,
+    setting_value: String,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct UserFields {
-    userField: Vec<UserField>,
+    user_field: Vec<UserField>,
 }
 
 #[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
 struct UserField {
     name: String,
     value: String,
@@ -155,23 +173,23 @@ impl ChargeCreditCardRequest {
         let customer_id = String::from("99999456654");
 
         let charge_request = ChargeCreditCardRequest {
-            createTransactionRequest: CreateTransactionRequest {
-                merchantAuthentication: MerchantAuthentication {
+            create_transaction_request: CreateTransactionRequest {
+                merchant_authentication: MerchantAuthentication {
                     name: merchant_id,
-                    transactionKey: transaction_key,
+                    transaction_key,
                 },
-                refId: ref_id,
-                transactionRequest: TransactionRequest {
-                    transactionType: transaction_type,
+                ref_id,
+                transaction_request: TransactionRequest {
+                    transaction_type,
                     amount: transaction_total,
                     payment: Payment {
-                        creditCard: CreditCard {
-                            cardCode: credit_card_cvv,
-                            cardNumber: credit_card_number,
-                            expirationDate: credit_card_exp,
+                        credit_card: CreditCard {
+                            card_code: credit_card_cvv,
+                            card_number: credit_card_number,
+                            expiration_date: credit_card_exp,
                         },
                     },
-                    lineItems: vec![],
+                    line_items: vec![],
                     tax: Fee {
                         amount: "7.32".to_string(),
                         description: "test".to_string(),
@@ -187,46 +205,46 @@ impl ChargeCreditCardRequest {
                         description: "test".to_string(),
                         name: "shipping".to_string(),
                     },
-                    poNumber: po_number,
+                    po_number,
                     customer: Customer { id: customer_id },
-                    billTo: Address {
+                    bill_to: Address {
                         address: "123 Main St".to_string(),
                         city: "Lehi".to_string(),
                         company: "".to_string(),
                         country: "US".to_string(),
-                        firstName: "Jamie".to_string(),
-                        lastName: "Son".to_string(),
+                        first_name: "Jamie".to_string(),
+                        last_name: "Son".to_string(),
                         state: "UT".to_string(),
                         zip: "84043".to_string(),
                     },
-                    shipTo: Address {
+                    ship_to: Address {
                         address: "123 Main St".to_string(),
                         city: "Lehi".to_string(),
                         company: "".to_string(),
                         country: "US".to_string(),
-                        firstName: "Jamie".to_string(),
-                        lastName: "Son".to_string(),
+                        first_name: "Jamie".to_string(),
+                        last_name: "Son".to_string(),
                         state: "UT".to_string(),
                         zip: "84043".to_string(),
                     },
-                    customerIP: customer_ip,
-                    transactionSettings: TransactionSettings {
+                    customer_ip: customer_ip,
+                    transaction_settings: TransactionSettings {
                         setting: TransactionSetting {
-                            settingName: "testRequest".to_string(),
-                            settingValue: "false".to_string(),
+                            setting_name: "testRequest".to_string(),
+                            setting_value: "false".to_string(),
                         },
                     },
-                    userFields: UserFields { userField: vec![] },
-                    processingOptions: ProcessingOptions {
-                        isSubsequentAuth: "true".to_string(),
+                    user_fields: UserFields { user_field: vec![] },
+                    processing_options: ProcessingOptions {
+                        is_subsequent_auth: "true".to_string(),
                     },
-                    subsequentAuthInformation: SubsequentAuthInformation {
-                        originalAuthAmount: "45".to_string(),
-                        originalNetworkTransId: "123456789NNNH".to_string(),
+                    subsequent_auth_information: SubsequentAuthInformation {
+                        original_auth_amount: "45".to_string(),
+                        original_network_trans_id: "123456789NNNH".to_string(),
                         reason: "resubmission".to_string(),
                     },
-                    authorizationIndicatorType: AuthorizationIndicatorType {
-                        authorizationIndicator: "final".to_string(),
+                    authorization_indicator_type: AuthorizationIndicatorType {
+                        authorization_indicator: "final".to_string(),
                     },
                 },
             },
