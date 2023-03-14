@@ -25,11 +25,8 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::{
-    sync::broadcast::{self, Sender},
-    time::sleep,
-};
-use traffic_jam::*;
+use tokio::sync::broadcast::{self, Sender};
+use traffic_jam::{authorize_net::ChargeCreditCardRequest, *};
 
 mod inventory;
 
@@ -146,39 +143,48 @@ async fn process_order(
 
     let process_handle = tokio::spawn(async move {
         if HOLDING_INVENTORY.lock().unwrap().hold_items(&new_order) {
-            if collect_payment().await {
-                HOLDING_INVENTORY.lock().unwrap().release_order(&order_id);
-                let completion_msg = format!("Completed order {}", order_id).to_string();
-                let _ = state.tx.send(completion_msg.to_owned());
-                UDPATE_QUEUE
-                    .lock()
-                    .unwrap()
-                    .push_back(completion_msg.to_owned());
-                return (
-                    StatusCode::OK,
-                    Json(DetailedResponse {
-                        data: Some(new_order),
-                        error: None,
-                    }),
-                );
-            } else {
-                HOLDING_INVENTORY.lock().unwrap().undo_hold(&order_id);
-                let failure_msg = format!("Error while collecting payment for order #{}", order_id);
-                let _ = state.tx.send(failure_msg.to_owned());
-                UDPATE_QUEUE
-                    .lock()
-                    .unwrap()
-                    .push_back(failure_msg.to_owned());
-                return (
-                    StatusCode::OK,
-                    Json(DetailedResponse {
-                        data: None,
-                        error: Some(RequestError {
-                            message: "Unable to process payment method".to_string(),
-                            detail: "Invalid payment details".to_string(),
+            match ChargeCreditCardRequest::create().await {
+                Ok(charge_details) => {
+                    HOLDING_INVENTORY.lock().unwrap().release_order(&order_id);
+
+                    let completion_msg = format!(
+                        "Completed order {}. It has refId {}",
+                        order_id, charge_details.ref_id
+                    )
+                    .to_string();
+                    let _ = state.tx.send(completion_msg.to_owned());
+                    UDPATE_QUEUE
+                        .lock()
+                        .unwrap()
+                        .push_back(completion_msg.to_owned());
+                    return (
+                        StatusCode::OK,
+                        Json(DetailedResponse {
+                            data: Some(new_order),
+                            error: None,
                         }),
-                    }),
-                );
+                    );
+                }
+                Err(_) => {
+                    HOLDING_INVENTORY.lock().unwrap().undo_hold(&order_id);
+                    let failure_msg =
+                        format!("Error while collecting payment for order #{}", order_id);
+                    let _ = state.tx.send(failure_msg.to_owned());
+                    UDPATE_QUEUE
+                        .lock()
+                        .unwrap()
+                        .push_back(failure_msg.to_owned());
+                    return (
+                        StatusCode::OK,
+                        Json(DetailedResponse {
+                            data: None,
+                            error: Some(RequestError {
+                                message: "Unable to process payment method".to_string(),
+                                detail: "Invalid payment details".to_string(),
+                            }),
+                        }),
+                    );
+                }
             }
         }
 
@@ -195,13 +201,6 @@ async fn process_order(
     });
 
     process_handle.await.unwrap()
-}
-
-async fn collect_payment() -> bool {
-    let sleep_time = Duration::from_secs(rand::thread_rng().gen_range(1..=3));
-    sleep(sleep_time).await;
-    let payment_status = rand::thread_rng().gen_bool(0.7);
-    payment_status
 }
 
 async fn dashboard() -> Html<&'static str> {

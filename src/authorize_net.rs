@@ -144,6 +144,12 @@ struct UserFields {
     user_field: Vec<UserField>,
 }
 
+impl UserFields {
+    fn get_default() -> UserFields {
+        UserFields { user_field: vec![] }
+    }
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct UserField {
@@ -151,8 +157,61 @@ struct UserField {
     value: String,
 }
 
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ChargeCreditCardResponse {
+    transaction_response: TransactionResponse,
+    pub ref_id: String,
+    messages: TransactionResponseResultMessages,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TransactionResponse {
+    response_code: String,
+    auth_code: String,
+    avs_result_code: String,
+    cvv_result_code: String,
+    trans_id: String,
+    #[serde(rename(deserialize = "refTransID"))]
+    ref_trans_id: String,
+    trans_hash: String,
+    test_request: String,
+    account_number: String,
+    account_type: String,
+    messages: Vec<TransactionResponseMessage>,
+    #[serde(default = "UserFields::get_default")]
+    user_fields: UserFields,
+    trans_hash_sha2: String,
+    #[serde(rename(deserialize = "SupplementalDataQualificationIndicator"))]
+    supplemental_data_qualification_indicator: usize,
+    #[serde(default)]
+    network_trans_id: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TransactionResponseResultMessages {
+    result_code: String,
+    message: Vec<TransactionResponseResultMessage>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TransactionResponseResultMessage {
+    code: String,
+    text: String,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct TransactionResponseMessage {
+    code: String,
+    description: String,
+}
+
 impl ChargeCreditCardRequest {
-    pub async fn create() -> Result<(), Box<dyn std::error::Error>> {
+    pub async fn create() -> Result<ChargeCreditCardResponse, Box<dyn std::error::Error>> {
         dotenv().ok();
         let client = reqwest::Client::new();
 
@@ -262,10 +321,7 @@ impl ChargeCreditCardRequest {
         // Authorize.NET returns a ZWSP at the start of the JSON response
         let response = str::replace(&response, "\u{feff}", "");
 
-        let response: serde_json::Value = serde_json::from_str(&response)?;
-
-        println!("Res: {}", response["transactionResponse"]["responseCode"]);
-
-        Ok(())
+        let response: ChargeCreditCardResponse = serde_json::from_str(&response)?;
+        Ok(response)
     }
 }
