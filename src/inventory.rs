@@ -20,32 +20,41 @@ impl LockedInventory {
 
         let conn = &mut POOL.get().unwrap();
 
-        for order_item in &order.items {
-            let result_product: Option<Product> =
-                products.find(order_item.id).first(conn).optional().unwrap();
-            match result_product {
-                Some(item) => {
-                    if item.stock >= order_item.qty {
-                        diesel::update(products.find(order_item.id))
-                            .set(stock.eq(stock - order_item.qty))
-                            .get_result::<Product>(conn)
-                            .expect("Unable to take inventory");
-                    } else {
-                        println!(
-                            "| Order #{} over requested\n -{} has qty of {} but order is requesting qty of {}",
-                            order.id, item.title, item.stock, order_item.qty
-                        );
-                        return false;
+        let hold_transaction = conn
+            .build_transaction()
+            .read_write()
+            .run::<(), diesel::result::Error, _>(|conn| {
+                for order_item in &order.items {
+                    let _ = diesel::update(products.find(order_item.id))
+                        .set(stock.eq(stock - order_item.qty))
+                        .execute(conn);
+
+                    let result_product: Option<Product> =
+                        products.find(order_item.id).first(conn).optional().unwrap();
+
+                    match result_product {
+                        Some(product) => {
+                            if product.stock < 0 {
+                                return Err(diesel::result::Error::RollbackTransaction);
+                            }
+                        }
+                        None => {
+                            panic!("Could not find item with id {}", order_item.id);
+                        }
                     }
                 }
-                None => {
-                    panic!("Could not find item with id {}", order_item.id);
-                }
-            }
-        }
 
-        self.items.insert(order.id, order.items.clone());
-        true
+                Ok(())
+            });
+
+        match hold_transaction {
+            Ok(_) => {
+                self.items.insert(order.id, order.items.clone());
+
+                return true;
+            }
+            Err(_) => false,
+        }
     }
 
     pub fn undo_hold(&mut self, order_id: &usize) {
