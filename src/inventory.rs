@@ -1,9 +1,7 @@
-use self::models::*;
-use crate::POOL;
+use crate::{db::POOL, models::*};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use traffic_jam::*;
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Item {
@@ -18,7 +16,7 @@ pub struct LockedInventory {
 
 impl LockedInventory {
     pub fn hold_items(&mut self, order: &Order) -> bool {
-        use self::schema::products::dsl::*;
+        use crate::schema::products::dsl::*;
 
         let conn = &mut POOL.get().unwrap();
 
@@ -51,7 +49,7 @@ impl LockedInventory {
     }
 
     pub fn undo_hold(&mut self, order_id: &usize) {
-        use self::schema::products::dsl::*;
+        use crate::schema::products::dsl::*;
 
         let conn = &mut POOL.get().unwrap();
 

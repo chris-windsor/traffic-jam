@@ -10,10 +10,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use diesel::{
-    prelude::*,
-    r2d2::{ConnectionManager, Pool},
-};
+use diesel::prelude::*;
 use futures::Stream;
 use lazy_static::lazy_static;
 use rand::Rng;
@@ -26,9 +23,7 @@ use std::{
     time::Duration,
 };
 use tokio::sync::broadcast::{self, Sender};
-use traffic_jam::{authorize_net::ChargeCreditCardRequest, *};
-
-mod inventory;
+use traffic_jam::{authorize_net::ChargeCreditCardRequest, db::POOL, *};
 
 #[derive(Serialize)]
 struct ResultProduct {
@@ -54,10 +49,7 @@ struct AppState {
     tx: Sender<String>,
 }
 
-type PgPool = Pool<ConnectionManager<PgConnection>>;
-
 lazy_static! {
-    pub static ref POOL: PgPool = create_pool();
     static ref HOLDING_INVENTORY: Arc<Mutex<LockedInventory>> =
         Arc::new(Mutex::new(LockedInventory {
             items: HashMap::from([])
@@ -78,7 +70,7 @@ async fn main() {
         .route("/event_stream", get(sse_handler))
         .route("/event_socket", get(ws_handler))
         .with_state(app_state.clone());
-    let addr = SocketAddr::from(([127, 0, 0, 1], 3000));
+    let addr = SocketAddr::from(([127, 0, 0, 1], 4567));
     axum::Server::bind(&addr)
         .serve(app.into_make_service())
         .await
@@ -143,7 +135,7 @@ async fn process_order(
 
     let process_handle = tokio::spawn(async move {
         if HOLDING_INVENTORY.lock().unwrap().hold_items(&new_order) {
-            match ChargeCreditCardRequest::create().await {
+            match ChargeCreditCardRequest::create(&new_order).await {
                 Ok(charge_details) => {
                     HOLDING_INVENTORY.lock().unwrap().release_order(&order_id);
 

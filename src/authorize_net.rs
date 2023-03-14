@@ -1,3 +1,4 @@
+use crate::inventory::Order;
 use dotenvy::dotenv;
 use rand::Rng;
 use reqwest::header::CONTENT_TYPE;
@@ -145,7 +146,7 @@ struct UserFields {
 }
 
 impl UserFields {
-    fn get_default() -> UserFields {
+    fn get_default() -> Self {
         UserFields { user_field: vec![] }
     }
 }
@@ -211,7 +212,9 @@ struct TransactionResponseMessage {
 }
 
 impl ChargeCreditCardRequest {
-    pub async fn create() -> Result<ChargeCreditCardResponse, Box<dyn std::error::Error>> {
+    pub async fn create(
+        order: &Order,
+    ) -> Result<ChargeCreditCardResponse, Box<dyn std::error::Error>> {
         dotenv().ok();
         let client = reqwest::Client::new();
 
@@ -219,7 +222,7 @@ impl ChargeCreditCardRequest {
         let transaction_key =
             env::var("TRANSACTION_KEY").expect("Could not get TRANSACTION_KEY from .env");
 
-        let ref_id = String::from("123456");
+        let ref_id = String::from(order.id.to_string());
         let transaction_type = String::from("authCaptureTransaction");
         let transaction_total = String::from("100.0");
 

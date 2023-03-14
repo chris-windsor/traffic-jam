@@ -1,4 +1,6 @@
 pub mod authorize_net;
+pub mod db;
+pub mod inventory;
 pub mod models;
 pub mod schema;
 
