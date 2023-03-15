@@ -1,5 +1,6 @@
 pub mod authorize_net;
 pub mod db;
+pub mod ecommerce;
 pub mod inventory;
 pub mod models;
 pub mod schema;

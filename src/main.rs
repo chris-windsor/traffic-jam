@@ -1,5 +1,3 @@
-use self::models::*;
-use crate::inventory::*;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
@@ -23,8 +21,12 @@ use std::{
     time::Duration,
 };
 use tokio::sync::broadcast::{self, Sender};
-use traffic_jam::{authorize_net::ChargeCreditCardRequest, db::POOL, *};
+use traffic_jam::*;
 
+use crate::authorize_net::ChargeCreditCardRequest;
+use crate::db::POOL;
+use crate::inventory::*;
+use crate::models::*;
 #[derive(Serialize)]
 struct ResultProduct {
     id: i32,
@@ -118,7 +120,7 @@ async fn product_data(
 
 async fn process_order(
     State(state): State<AppState>,
-    Json(order): Json<CreateOrder>,
+    Json(req_body): Json<CreateOrderRequest>,
 ) -> (StatusCode, Json<DetailedResponse<Order>>) {
     let order_id: usize = rand::thread_rng().gen_range(1..10000);
     let processing_msg = format!("Processing order {}", order_id).to_string();
@@ -130,12 +132,12 @@ async fn process_order(
 
     let new_order: Order = Order {
         id: order_id,
-        items: order.items,
+        items: req_body.items,
     };
 
     let process_handle = tokio::spawn(async move {
         if HOLDING_INVENTORY.lock().unwrap().hold_items(&new_order) {
-            match ChargeCreditCardRequest::create(&new_order).await {
+            match ChargeCreditCardRequest::create(&new_order, req_body.customer).await {
                 Ok(charge_details) => {
                     HOLDING_INVENTORY.lock().unwrap().release_order(&order_id);
 

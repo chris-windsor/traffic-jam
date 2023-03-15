@@ -1,5 +1,6 @@
-use crate::schema::products;
 use diesel::prelude::*;
+
+use crate::schema::products;
 
 #[derive(Queryable)]
 pub struct Product {

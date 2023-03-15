@@ -1,9 +1,10 @@
-use crate::inventory::Order;
 use dotenvy::dotenv;
 use rand::Rng;
 use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
 use std::env;
+
+use crate::{ecommerce::Customer, inventory::Order};
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -33,11 +34,11 @@ struct TransactionRequest {
     amount: String,
     payment: Payment,
     line_items: Vec<()>,
-    tax: Fee,
-    duty: Fee,
-    shipping: Fee,
+    tax: AuthorizeNetFee,
+    duty: AuthorizeNetFee,
+    shipping: AuthorizeNetFee,
     po_number: String,
-    customer: Customer,
+    customer: AuthorizeNetCustomer,
     bill_to: Address,
     ship_to: Address,
     #[serde(rename(serialize = "customerIP"))]
@@ -55,47 +56,31 @@ struct AuthorizationIndicatorType {
     authorization_indicator: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct Address {
-    first_name: String,
-    last_name: String,
-    company: String,
-    address: String,
-    city: String,
-    state: String,
-    zip: String,
-    country: String,
+pub struct Address {
+    pub first_name: String,
+    pub last_name: String,
+    pub company: String,
+    pub address: String,
+    pub city: String,
+    pub state: String,
+    pub zip: String,
+    pub country: String,
 }
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Customer {
+struct AuthorizeNetCustomer {
     id: String,
 }
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Fee {
+struct AuthorizeNetFee {
     amount: String,
     name: String,
     description: String,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LineItems {
-    line_item: LineItem,
-}
-
-#[derive(Deserialize, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct LineItem {
-    item_id: String,
-    name: String,
-    description: String,
-    quantity: String,
-    unit_price: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -104,12 +89,12 @@ struct Payment {
     credit_card: CreditCard,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct CreditCard {
-    card_number: String,
-    expiration_date: String,
-    card_code: String,
+pub struct CreditCard {
+    pub card_number: String,
+    pub expiration_date: String,
+    pub card_code: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -214,6 +199,7 @@ struct TransactionResponseMessage {
 impl ChargeCreditCardRequest {
     pub async fn create(
         order: &Order,
+        customer: Customer,
     ) -> Result<ChargeCreditCardResponse, Box<dyn std::error::Error>> {
         dotenv().ok();
         let client = reqwest::Client::new();
@@ -225,11 +211,6 @@ impl ChargeCreditCardRequest {
         let ref_id = String::from(order.id.to_string());
         let transaction_type = String::from("authCaptureTransaction");
         let transaction_total = String::from("100.0");
-
-        let customer_ip = String::from("192.168.1.1");
-        let credit_card_number = String::from("5424000000000015");
-        let credit_card_exp = String::from("2025-12");
-        let credit_card_cvv = String::from("999");
 
         let po_number = rand::thread_rng().gen_range(0..100000).to_string();
         let customer_id = String::from("99999456654");
@@ -246,50 +227,32 @@ impl ChargeCreditCardRequest {
                     amount: transaction_total,
                     payment: Payment {
                         credit_card: CreditCard {
-                            card_code: credit_card_cvv,
-                            card_number: credit_card_number,
-                            expiration_date: credit_card_exp,
+                            card_code: customer.credit_card.card_code,
+                            card_number: customer.credit_card.card_number,
+                            expiration_date: customer.credit_card.expiration_date,
                         },
                     },
                     line_items: vec![],
-                    tax: Fee {
+                    tax: AuthorizeNetFee {
                         amount: "7.32".to_string(),
                         description: "test".to_string(),
                         name: "taxes".to_string(),
                     },
-                    duty: Fee {
+                    duty: AuthorizeNetFee {
                         amount: "8.55".to_string(),
                         description: "test".to_string(),
                         name: "duty".to_string(),
                     },
-                    shipping: Fee {
+                    shipping: AuthorizeNetFee {
                         amount: "5.25".to_string(),
                         description: "test".to_string(),
                         name: "shipping".to_string(),
                     },
                     po_number,
-                    customer: Customer { id: customer_id },
-                    bill_to: Address {
-                        address: "123 Main St".to_string(),
-                        city: "Lehi".to_string(),
-                        company: "".to_string(),
-                        country: "US".to_string(),
-                        first_name: "Jamie".to_string(),
-                        last_name: "Son".to_string(),
-                        state: "UT".to_string(),
-                        zip: "84043".to_string(),
-                    },
-                    ship_to: Address {
-                        address: "123 Main St".to_string(),
-                        city: "Lehi".to_string(),
-                        company: "".to_string(),
-                        country: "US".to_string(),
-                        first_name: "Jamie".to_string(),
-                        last_name: "Son".to_string(),
-                        state: "UT".to_string(),
-                        zip: "84043".to_string(),
-                    },
-                    customer_ip: customer_ip,
+                    customer: AuthorizeNetCustomer { id: customer_id },
+                    bill_to: customer.billing_address,
+                    ship_to: customer.shipping_address,
+                    customer_ip: customer.ip_address,
                     transaction_settings: TransactionSettings {
                         setting: TransactionSetting {
                             setting_name: "testRequest".to_string(),

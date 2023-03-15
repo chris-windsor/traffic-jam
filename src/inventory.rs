@@ -1,7 +1,8 @@
-use crate::{db::POOL, models::*};
 use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+
+use crate::{db::POOL, ecommerce::Customer, models::*};
 
 #[derive(Clone, Deserialize, Serialize)]
 pub struct Item {
@@ -91,6 +92,7 @@ pub struct Order {
 }
 
 #[derive(Clone, Deserialize)]
-pub struct CreateOrder {
+pub struct CreateOrderRequest {
+    pub customer: Customer,
     pub items: Vec<Item>,
 }
