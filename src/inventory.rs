@@ -8,6 +8,7 @@ use crate::{db::POOL, ecommerce::Customer, models::*};
 pub struct Item {
     pub id: i32,
     pub qty: i32,
+    pub price: f32,
 }
 
 #[derive(Clone)]

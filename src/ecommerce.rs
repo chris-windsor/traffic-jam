@@ -1,7 +1,10 @@
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use serde::{Deserialize, Serialize};
 
-use crate::authorize_net::{Address, AuthorizeNetFee, CreditCard};
+use crate::{
+    authorize_net::{Address, AuthorizeNetFee, CreditCard},
+    inventory::Order,
+};
 
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
@@ -16,6 +19,10 @@ pub struct Customer {
     pub credit_card: CreditCard,
 }
 
+pub struct Discount {
+    amount: usize,
+}
+
 #[derive(Deserialize, Serialize, Clone)]
 pub struct Invoice {
     pub subtotal: BigDecimal,
@@ -25,20 +32,47 @@ pub struct Invoice {
 }
 
 impl Invoice {
-    pub fn create(subtotal: BigDecimal, shipping: BigDecimal, taxes: BigDecimal) -> Self {
+    pub fn create(
+        order: &Order,
+        discounts: Vec<Discount>,
+        shipping_fee: BigDecimal,
+        tax_rate: BigDecimal,
+    ) -> Self {
+        let subtotal = Self::calc_subtotal(&order, discounts);
+        let taxes = Self::calc_taxes(&subtotal, &tax_rate);
+
         Invoice {
             subtotal: subtotal.clone(),
-            shipping: shipping.clone(),
+            shipping: shipping_fee.clone(),
             taxes: taxes.clone(),
-            total: subtotal + shipping + taxes,
+            total: subtotal.clone() + shipping_fee + taxes.clone(),
         }
+    }
+
+    fn calc_subtotal(order: &Order, discounts: Vec<Discount>) -> BigDecimal {
+        let mut subtotal = BigDecimal::from_f32(0.0).unwrap();
+
+        for item in &order.items {
+            subtotal =
+                subtotal + BigDecimal::from_f32(item.qty.to_f32().unwrap() * item.price).unwrap();
+        }
+
+        for discount in discounts {
+            subtotal = subtotal - BigDecimal::from_usize(discount.amount).unwrap();
+        }
+
+        subtotal
+    }
+
+    fn calc_taxes(subtotal: &BigDecimal, tax_rate: &BigDecimal) -> BigDecimal {
+        subtotal * tax_rate
     }
 
     pub fn get_shipping(&self) -> AuthorizeNetFee {
         AuthorizeNetFee {
             name: String::from("Shipping"),
             description: String::from("Flat rate shipping fee"),
-            amount: self.shipping.to_string(),
+            amount: format!("{:.02}", self.shipping),
         }
     }
 
@@ -46,7 +80,7 @@ impl Invoice {
         AuthorizeNetFee {
             name: String::from("Taxes"),
             description: String::from(""),
-            amount: self.taxes.to_string(),
+            amount: format!("{:.02}", self.taxes),
         }
     }
 

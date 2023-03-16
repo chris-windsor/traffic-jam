@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use bigdecimal::BigDecimal;
+use bigdecimal::{BigDecimal, FromPrimitive};
 use diesel::prelude::*;
 use futures::Stream;
 use lazy_static::lazy_static;
@@ -18,7 +18,6 @@ use std::{
     collections::{HashMap, VecDeque},
     convert::Infallible,
     net::SocketAddr,
-    str::FromStr,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -27,7 +26,7 @@ use traffic_jam::*;
 
 use crate::authorize_net::ChargeCreditCardRequest;
 use crate::db::POOL;
-use crate::ecommerce::Invoice;
+use crate::ecommerce::{Discount, Invoice};
 use crate::inventory::*;
 use crate::models::*;
 
@@ -139,10 +138,13 @@ async fn process_order(
         items: req_body.items,
     };
 
+    let discounts: Vec<Discount> = vec![];
+
     let invoice = Invoice::create(
-        BigDecimal::from_str("10.0").unwrap(),
-        BigDecimal::from_str("1.00").unwrap(),
-        BigDecimal::from_str("0.83").unwrap(),
+        &new_order,
+        discounts,
+        BigDecimal::from_f32(5.0).unwrap(),
+        BigDecimal::from_f32(0.0715).unwrap(),
     );
 
     let process_handle = tokio::spawn(async move {

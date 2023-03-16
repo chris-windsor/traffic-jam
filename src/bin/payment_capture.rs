@@ -1,9 +1,8 @@
-use bigdecimal::BigDecimal;
-use std::str::FromStr;
+use bigdecimal::{BigDecimal, FromPrimitive};
 
 use traffic_jam::{
     authorize_net::{Address, ChargeCreditCardRequest, CreditCard},
-    ecommerce::{Customer, Invoice},
+    ecommerce::{Customer, Discount, Invoice},
     inventory::Order,
 };
 
@@ -47,10 +46,13 @@ async fn main() {
         },
     };
 
+    let discounts: Vec<Discount> = vec![];
+
     let invoice = Invoice::create(
-        BigDecimal::from_str("10.0").unwrap(),
-        BigDecimal::from_str("1.00").unwrap(),
-        BigDecimal::from_str("0.83").unwrap(),
+        &order,
+        discounts,
+        BigDecimal::from_f32(5.0).unwrap(),
+        BigDecimal::from_f32(0.0715).unwrap(),
     );
 
     ChargeCreditCardRequest::create(&order, invoice, customer)
