@@ -4,7 +4,10 @@ use reqwest::header::CONTENT_TYPE;
 use serde::{Deserialize, Serialize};
 use std::env;
 
-use crate::{ecommerce::Customer, inventory::Order};
+use crate::{
+    ecommerce::{Customer, Invoice},
+    inventory::Order,
+};
 
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -75,12 +78,12 @@ struct AuthorizeNetCustomer {
     id: String,
 }
 
-#[derive(Deserialize, Serialize)]
+#[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
-struct AuthorizeNetFee {
-    amount: String,
-    name: String,
-    description: String,
+pub struct AuthorizeNetFee {
+    pub amount: String,
+    pub name: String,
+    pub description: String,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -199,6 +202,7 @@ struct TransactionResponseMessage {
 impl ChargeCreditCardRequest {
     pub async fn create(
         order: &Order,
+        invoice: Invoice,
         customer: Customer,
     ) -> Result<ChargeCreditCardResponse, Box<dyn std::error::Error>> {
         dotenv().ok();
@@ -210,7 +214,11 @@ impl ChargeCreditCardRequest {
 
         let ref_id = String::from(order.id.to_string());
         let transaction_type = String::from("authCaptureTransaction");
-        let transaction_total = String::from("100.0");
+        let transaction_total = invoice.total.to_string();
+
+        let taxes = invoice.get_taxes();
+        let duties = invoice.get_duty();
+        let shipping_fees = invoice.get_shipping();
 
         let po_number = rand::thread_rng().gen_range(0..100000).to_string();
         let customer_id = String::from("99999456654");
@@ -233,21 +241,9 @@ impl ChargeCreditCardRequest {
                         },
                     },
                     line_items: vec![],
-                    tax: AuthorizeNetFee {
-                        amount: "7.32".to_string(),
-                        description: "test".to_string(),
-                        name: "taxes".to_string(),
-                    },
-                    duty: AuthorizeNetFee {
-                        amount: "8.55".to_string(),
-                        description: "test".to_string(),
-                        name: "duty".to_string(),
-                    },
-                    shipping: AuthorizeNetFee {
-                        amount: "5.25".to_string(),
-                        description: "test".to_string(),
-                        name: "shipping".to_string(),
-                    },
+                    tax: taxes,
+                    duty: duties,
+                    shipping: shipping_fees,
                     po_number,
                     customer: AuthorizeNetCustomer { id: customer_id },
                     bill_to: customer.billing_address,

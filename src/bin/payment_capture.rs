@@ -1,6 +1,9 @@
+use bigdecimal::BigDecimal;
+use std::str::FromStr;
+
 use traffic_jam::{
     authorize_net::{Address, ChargeCreditCardRequest, CreditCard},
-    ecommerce::Customer,
+    ecommerce::{Customer, Invoice},
     inventory::Order,
 };
 
@@ -44,7 +47,13 @@ async fn main() {
         },
     };
 
-    ChargeCreditCardRequest::create(&order, customer)
+    let invoice = Invoice::create(
+        BigDecimal::from_str("10.0").unwrap(),
+        BigDecimal::from_str("1.00").unwrap(),
+        BigDecimal::from_str("0.83").unwrap(),
+    );
+
+    ChargeCreditCardRequest::create(&order, invoice, customer)
         .await
         .expect("Unable to make payment capture");
 }

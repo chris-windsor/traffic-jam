@@ -8,6 +8,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use bigdecimal::BigDecimal;
 use diesel::prelude::*;
 use futures::Stream;
 use lazy_static::lazy_static;
@@ -17,6 +18,7 @@ use std::{
     collections::{HashMap, VecDeque},
     convert::Infallible,
     net::SocketAddr,
+    str::FromStr,
     sync::{Arc, Mutex},
     time::Duration,
 };
@@ -25,8 +27,10 @@ use traffic_jam::*;
 
 use crate::authorize_net::ChargeCreditCardRequest;
 use crate::db::POOL;
+use crate::ecommerce::Invoice;
 use crate::inventory::*;
 use crate::models::*;
+
 #[derive(Serialize)]
 struct ResultProduct {
     id: i32,
@@ -135,9 +139,15 @@ async fn process_order(
         items: req_body.items,
     };
 
+    let invoice = Invoice::create(
+        BigDecimal::from_str("10.0").unwrap(),
+        BigDecimal::from_str("1.00").unwrap(),
+        BigDecimal::from_str("0.83").unwrap(),
+    );
+
     let process_handle = tokio::spawn(async move {
         if HOLDING_INVENTORY.lock().unwrap().hold_items(&new_order) {
-            match ChargeCreditCardRequest::create(&new_order, req_body.customer).await {
+            match ChargeCreditCardRequest::create(&new_order, invoice, req_body.customer).await {
                 Ok(charge_details) => {
                     HOLDING_INVENTORY.lock().unwrap().release_order(&order_id);
 
