@@ -1,9 +1,12 @@
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive};
+use diesel::prelude::*;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     authorize_net::{Address, AuthorizeNetFee, CreditCard},
+    db::POOL,
     inventory::Order,
+    models::*,
 };
 
 #[derive(Deserialize, Serialize, Clone)]
@@ -50,11 +53,14 @@ impl Invoice {
     }
 
     fn calc_subtotal(order: &Order, discounts: Vec<Discount>) -> BigDecimal {
+        use crate::schema::products::dsl::*;
+        let conn = &mut POOL.get().unwrap();
+
         let mut subtotal = BigDecimal::from_f32(0.0).unwrap();
 
         for item in &order.items {
-            subtotal =
-                subtotal + BigDecimal::from_f32(item.qty.to_f32().unwrap() * item.price).unwrap();
+            let db_item: Option<Product> = products.find(item.id).first(conn).optional().unwrap();
+            subtotal = subtotal + BigDecimal::from_i32(item.qty).unwrap() * db_item.unwrap().price;
         }
 
         for discount in discounts {

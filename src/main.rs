@@ -35,6 +35,7 @@ struct ResultProduct {
     id: i32,
     title: String,
     stock: i32,
+    price: BigDecimal,
 }
 
 #[derive(Serialize)]
@@ -100,6 +101,7 @@ async fn product_data(
                     id: item.id,
                     title: item.title,
                     stock: item.stock,
+                    price: item.price,
                 }),
                 error: None,
             }),

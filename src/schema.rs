@@ -5,5 +5,6 @@ diesel::table! {
         id -> Int4,
         title -> Varchar,
         stock -> Int4,
+        price -> Numeric,
     }
 }

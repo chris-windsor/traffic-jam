@@ -1,3 +1,4 @@
+use bigdecimal::BigDecimal;
 use diesel::prelude::*;
 
 use crate::schema::products;
@@ -7,6 +8,7 @@ pub struct Product {
     pub id: i32,
     pub title: String,
     pub stock: i32,
+    pub price: BigDecimal,
 }
 
 #[derive(Insertable)]
