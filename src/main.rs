@@ -8,7 +8,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use bigdecimal::{BigDecimal, FromPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use diesel::prelude::*;
 use futures::Stream;
 use lazy_static::lazy_static;
@@ -36,7 +36,7 @@ struct ResultProduct {
     id: i32,
     title: String,
     stock: i32,
-    price: BigDecimal,
+    price: f32,
 }
 
 #[derive(Serialize)]
@@ -101,7 +101,7 @@ async fn product_data(
                     id: item.id,
                     title: item.title,
                     stock: item.stock,
-                    price: item.price,
+                    price: item.price.to_f32().unwrap(),
                 }),
                 error: None,
             }),

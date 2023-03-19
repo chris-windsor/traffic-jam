@@ -1,4 +1,5 @@
-use std::io::stdin;
+use bigdecimal::BigDecimal;
+use std::{io::stdin, str::FromStr};
 use traffic_jam::*;
 
 fn main() {
@@ -7,6 +8,7 @@ fn main() {
 
     let mut title = String::new();
     let mut stock = String::new();
+    let mut price = String::new();
 
     println!("What is the name of this new product?");
     stdin()
@@ -20,7 +22,13 @@ fn main() {
         .expect("Unable to read stock input");
     let stock: i32 = stock.trim().parse().expect("Unable to parse stock value");
 
-    let product = create_product(conn, title, &stock);
+    println!("What should the price of '{}' be?", title);
+    stdin()
+        .read_line(&mut price)
+        .expect("Unable to read price input");
+    let price: BigDecimal = BigDecimal::from_str(price.trim()).expect("Unable to parse price");
+
+    let product = create_product(conn, title, &stock, &price);
     println!(
         "\nSaved '{}'(#{}), and set its stock level to {}",
         title, product.id, stock

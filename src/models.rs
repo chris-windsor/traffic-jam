@@ -17,4 +17,5 @@ pub struct Product {
 pub struct NewProduct<'a> {
     pub title: &'a str,
     pub stock: &'a i32,
+    pub price: &'a BigDecimal,
 }

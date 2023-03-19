@@ -5,6 +5,7 @@ pub mod inventory;
 pub mod models;
 pub mod schema;
 
+use bigdecimal::BigDecimal;
 use diesel::pg::PgConnection;
 use diesel::prelude::*;
 use diesel::r2d2::{ConnectionManager, Pool};
@@ -25,10 +26,19 @@ pub fn create_pool() -> Pool<ConnectionManager<PgConnection>> {
         .expect("Could not create connection pool")
 }
 
-pub fn create_product(conn: &mut PgConnection, title: &str, stock: &i32) -> Product {
+pub fn create_product(
+    conn: &mut PgConnection,
+    title: &str,
+    stock: &i32,
+    price: &BigDecimal,
+) -> Product {
     use crate::schema::products;
 
-    let new_product = NewProduct { title, stock };
+    let new_product = NewProduct {
+        title,
+        stock,
+        price,
+    };
 
     diesel::insert_into(products::table)
         .values(&new_product)
