@@ -4,7 +4,7 @@ use axum::{
         Path, State, WebSocketUpgrade,
     },
     http::StatusCode,
-    response::{sse::Event, Html, IntoResponse, Sse},
+    response::{sse::Event, IntoResponse, Sse},
     routing::{get, post},
     Json, Router,
 };
@@ -14,6 +14,7 @@ use futures::Stream;
 use lazy_static::lazy_static;
 use rand::Rng;
 use serde::Serialize;
+use serde_json::json;
 use std::{
     collections::{HashMap, VecDeque},
     convert::Infallible,
@@ -72,7 +73,6 @@ async fn main() {
     let app = Router::new()
         .route("/product/:product_id", get(product_data))
         .route("/process_order", post(process_order))
-        .route("/dashboard", get(dashboard))
         .route("/event_stream", get(sse_handler))
         .route("/event_socket", get(ws_handler))
         .with_state(app_state.clone());
@@ -127,6 +127,8 @@ async fn process_order(
     State(state): State<AppState>,
     Json(req_body): Json<CreateOrderRequest>,
 ) -> (StatusCode, Json<DetailedResponse<Order>>) {
+    use self::schema::products::dsl::*;
+
     let order_id: usize = rand::thread_rng().gen_range(1..10000);
     let processing_msg = format!("Processing order {}", order_id).to_string();
     let _ = state.tx.send(processing_msg.to_owned());
@@ -152,14 +154,19 @@ async fn process_order(
     let process_handle = tokio::spawn(async move {
         if HOLDING_INVENTORY.lock().unwrap().hold_items(&new_order) {
             match ChargeCreditCardRequest::create(&new_order, invoice, req_body.customer).await {
-                Ok(charge_details) => {
+                Ok(_) => {
                     HOLDING_INVENTORY.lock().unwrap().release_order(&order_id);
 
-                    let completion_msg = format!(
-                        "Completed order {}. It has refId {}",
-                        order_id, charge_details.ref_id
-                    )
-                    .to_string();
+                    let order_product_ids: Vec<i32> =
+                        new_order.items.iter().map(|item| item.id).collect();
+
+                    let conn = &mut POOL.get().unwrap();
+                    let new_stock_values = products
+                        .filter(id.eq_any(order_product_ids))
+                        .load::<Product>(conn)
+                        .expect("Unable to retrieve current stock values for order products");
+
+                    let completion_msg = json!(new_stock_values).to_string();
                     let _ = state.tx.send(completion_msg.to_owned());
                     UDPATE_QUEUE
                         .lock()
@@ -211,10 +218,6 @@ async fn process_order(
     process_handle.await.unwrap()
 }
 
-async fn dashboard() -> Html<&'static str> {
-    Html(std::include_str!("../dashboard.html"))
-}
-
 async fn sse_handler() -> Sse<impl Stream<Item = Result<Event, Infallible>>> {
     let stream = async_stream::stream! {
         let mut interval = tokio::time::interval(Duration::from_millis(100));
@@ -241,8 +244,6 @@ async fn ws_loop(app_state: AppState, mut ws: WebSocket) {
     let mut rx = app_state.tx.subscribe();
 
     while let Ok(msg) = rx.recv().await {
-        ws.send(Message::Text(Json(&msg).to_string()))
-            .await
-            .unwrap();
+        ws.send(Message::Text(msg)).await.unwrap();
     }
 }
