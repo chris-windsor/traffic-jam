@@ -71,7 +71,10 @@ async fn main() {
     let app_state = AppState { tx: tx.clone() };
 
     let app = Router::new()
-        .route("/product/:product_id", get(product_data))
+        .route(
+            "/product/:product_id",
+            get(product_data).post(update_product),
+        )
         .route("/process_order", post(process_order))
         .route("/event_stream", get(sse_handler))
         .route("/event_socket", get(ws_handler))
@@ -84,13 +87,13 @@ async fn main() {
 }
 
 async fn product_data(
-    Path(product_id): Path<String>,
+    Path(product_id): Path<i32>,
 ) -> (StatusCode, Json<DetailedResponse<ResultProduct>>) {
     use self::schema::products::dsl::*;
 
     let conn = &mut POOL.get().unwrap();
 
-    let filter_id: i32 = product_id.parse().unwrap_or(0);
+    let filter_id: i32 = product_id;
     let result_product: Option<Product> = products.find(filter_id).first(conn).optional().unwrap();
 
     match result_product {
@@ -117,6 +120,53 @@ async fn product_data(
                         product_id
                     )
                     .to_string(),
+                }),
+            }),
+        ),
+    }
+}
+
+async fn update_product(
+    Path(product_id): Path<i32>,
+    State(state): State<AppState>,
+    Json(new_product): Json<Product>,
+) -> (StatusCode, Json<DetailedResponse<Product>>) {
+    use self::schema::products::dsl::*;
+
+    let conn = &mut POOL.get().unwrap();
+
+    let updated_product = diesel::update(products.find(product_id))
+        .set((
+            title.eq(new_product.title),
+            stock.eq(new_product.stock),
+            price.eq(new_product.price),
+        ))
+        .get_result::<Product>(conn);
+
+    match updated_product {
+        Ok(product) => {
+            let completion_msg = json!(product).to_string();
+            let _ = state.tx.send(completion_msg.to_owned());
+            UDPATE_QUEUE
+                .lock()
+                .unwrap()
+                .push_back(completion_msg.to_owned());
+
+            (
+                StatusCode::ACCEPTED,
+                Json(DetailedResponse {
+                    data: Some(product),
+                    error: None,
+                }),
+            )
+        }
+        Err(_) => (
+            StatusCode::NOT_FOUND,
+            Json(DetailedResponse {
+                data: None,
+                error: Some(RequestError {
+                    message: "Could not find product to update".to_string(),
+                    detail: "Please specify a valid product id".to_string(),
                 }),
             }),
         ),

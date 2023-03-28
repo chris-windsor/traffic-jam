@@ -1,10 +1,10 @@
 use bigdecimal::BigDecimal;
 use diesel::prelude::*;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 
 use crate::schema::products;
 
-#[derive(Queryable, Serialize)]
+#[derive(Queryable, Deserialize, Serialize)]
 pub struct Product {
     pub id: i32,
     pub title: String,
