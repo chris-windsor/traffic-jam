@@ -11,6 +11,7 @@ use axum::{
 use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
 use diesel::prelude::*;
 use futures::Stream;
+use http::Method;
 use lazy_static::lazy_static;
 use rand::Rng;
 use serde::Serialize;
@@ -30,6 +31,7 @@ use crate::db::POOL;
 use crate::ecommerce::{Discount, Invoice};
 use crate::inventory::*;
 use crate::models::*;
+use tower_http::cors::{Any, CorsLayer};
 
 #[derive(Serialize)]
 struct ResultProduct {
@@ -70,6 +72,10 @@ async fn main() {
     let (tx, _) = broadcast::channel::<String>(100);
     let app_state = AppState { tx: tx.clone() };
 
+    let cors = CorsLayer::new()
+        .allow_methods([Method::GET, Method::POST])
+        .allow_origin(Any);
+
     let app = Router::new()
         .route(
             "/product/:product_id",
@@ -78,6 +84,7 @@ async fn main() {
         .route("/process_order", post(process_order))
         .route("/event_stream", get(sse_handler))
         .route("/event_socket", get(ws_handler))
+        .layer(cors)
         .with_state(app_state.clone());
     let addr = SocketAddr::from(([127, 0, 0, 1], 4567));
     axum::Server::bind(&addr)
