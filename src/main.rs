@@ -1,7 +1,7 @@
 use axum::{
     extract::{
         ws::{Message, WebSocket},
-        Path, State, WebSocketUpgrade,
+        Path, Query, State, WebSocketUpgrade,
     },
     http::StatusCode,
     response::{sse::Event, IntoResponse, Sse},
@@ -14,7 +14,7 @@ use futures::Stream;
 use http::Method;
 use lazy_static::lazy_static;
 use rand::Rng;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::{
     collections::{HashMap, VecDeque},
@@ -38,7 +38,7 @@ struct ResultProduct {
     id: i32,
     title: String,
     stock: i32,
-    price: f32,
+    price: BigDecimal,
 }
 
 #[derive(Serialize)]
@@ -77,6 +77,7 @@ async fn main() {
         .allow_origin(Any);
 
     let app = Router::new()
+        .route("/products", get(query_products))
         .route(
             "/product/:product_id",
             get(product_data).post(update_product),
@@ -91,6 +92,38 @@ async fn main() {
         .serve(app.into_make_service())
         .await
         .unwrap();
+}
+
+#[derive(Deserialize)]
+struct Pagination {
+    offset: i64,
+    limit: i64,
+}
+
+async fn query_products(
+    query: Query<Pagination>,
+) -> (StatusCode, Json<DetailedResponse<Vec<Product>>>) {
+    use self::schema::products::dsl::*;
+
+    let conn = &mut POOL.get().unwrap();
+
+    let query = query.0;
+    let offset = query.offset;
+    let limit = query.limit;
+
+    let results = products
+        .offset(offset)
+        .limit(limit)
+        .load::<Product>(conn)
+        .unwrap();
+
+    (
+        StatusCode::OK,
+        Json(DetailedResponse {
+            data: Some(results),
+            error: None,
+        }),
+    )
 }
 
 async fn product_data(
@@ -111,7 +144,7 @@ async fn product_data(
                     id: item.id,
                     title: item.title,
                     stock: item.stock,
-                    price: item.price.to_f32().unwrap(),
+                    price: item.price,
                 }),
                 error: None,
             }),
