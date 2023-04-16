@@ -8,10 +8,10 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use bigdecimal::{BigDecimal, FromPrimitive, ToPrimitive};
+use bigdecimal::{BigDecimal, FromPrimitive};
 use diesel::prelude::*;
 use futures::Stream;
-use http::Method;
+use http::{header::CONTENT_TYPE, Method};
 use lazy_static::lazy_static;
 use rand::Rng;
 use serde::{Deserialize, Serialize};
@@ -74,6 +74,7 @@ async fn main() {
 
     let cors = CorsLayer::new()
         .allow_methods([Method::GET, Method::POST])
+        .allow_headers([CONTENT_TYPE])
         .allow_origin(Any);
 
     let app = Router::new()
